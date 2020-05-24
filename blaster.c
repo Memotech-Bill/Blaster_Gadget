@@ -360,10 +360,14 @@ void GadgetConfig (void)
     GadgetName ("blaster");
     WriteConfig ("idVendor", "0x09fb");
     WriteConfig ("idProduct", "0x6001");
+    WriteConfig ("bcdUSB", "0x0110");
+    WriteConfig ("bcdDevice", "0x0400");
     MakeDirs ("strings/0x409");
     WriteConfig ("strings/0x409/manufacturer", "Altera");
     WriteConfig ("strings/0x409/product", "USB-Blaster");
+    WriteConfig ("strings/0x409/serialnumber", "00000000");
     MakeDirs ("configs/default.1");
+    WriteConfig ("configs/default.1/MaxPower", "80");
     MakeDirs ("functions/ffs.blaster");
     Assign ("functions/ffs.blaster", "configs/default.1");
     diag_message (DIAG_USB, "Mount function filesystem at %s\n", sFFS);

@@ -37,16 +37,19 @@ Command bytes:
               Also reset TCK to zero.
 
 0r0xxxxx    = Bit bang the following pins:
-                Bit RC0: TCK
-                Bit RC1: TMS
-                Bit RC2: /CE
-                Bit RC3: /CS
-                Bit RC4: TDI
 
-              If the read bit (bit 6) is set, then queue byte for return containing:
-                Bit 0: TDO
-                Bit 1: ASO
-              State after changing input bits.
+* Bit RC0: TCK
+* Bit RC1: TMS
+* Bit RC2: /CE
+* Bit RC3: /CS
+* Bit RC4: TDI
+
+If the read bit (bit 6) is set, then queue byte for return containing:
+
+* Bit 0: TDO
+* Bit 1: ASO
+
+State read before changing output bits.
 
 Data bytes:
 
@@ -77,17 +80,17 @@ References
 
 The following links have been of assistance in developing the code:
 
-http://sa89a.net/mp.cgi/ele/ub.htm
-https://translate.google.co.uk/translate?sl=auto&tl=en&u=http%3A%2F%2Fsa89a.net%2Fmp.cgi%2Fele%2Fub.htm
-https://www.isticktoit.net/?p=1383
-https://www.collabora.com/news-and-blog/blog/2019/02/18/modern-usb-gadget-on-linux-and-how-to-integrate-it-with-systemd-part-1/
-https://www.collabora.com/news-and-blog/blog/2019/03/27/modern-usb-gadget-on-linux-and-how-to-integrate-it-with-systemd-part-2/
-https://www.collabora.com/news-and-blog/blog/2019/06/24/using-dummy-hcd/
-https://stackoverflow.com/questions/39375475/raspberry-pi-zero-usb-device-emulation
-https://www.kernel.org/doc/Documentation/usb/gadget_configfs.txt
-https://www.kernel.org/doc/Documentation/usb/functionfs.txt
-https://www.kernel.org/doc/html/latest/usb/functionfs.html
-https://www.kernel.org/doc/html/latest/driver-api/usb/gadget.html
-https://events.static.linuxfound.org/sites/events/files/slides/LinuxConNA-Make-your-own-USB-gadget-Andrzej.Pietrasiewicz.pdf
-https://github.com/libusbgx/libusbgx
-https://github.com/kopasiak/gt
+* http://sa89a.net/mp.cgi/ele/ub.htm
+* https://translate.google.co.uk/translate?sl=auto&tl=en&u=http%3A%2F%2Fsa89a.net%2Fmp.cgi%2Fele%2Fub.htm
+* https://www.isticktoit.net/?p=1383
+* https://www.collabora.com/news-and-blog/blog/2019/02/18/modern-usb-gadget-on-linux-and-how-to-integrate-it-with-systemd-part-1/
+* https://www.collabora.com/news-and-blog/blog/2019/03/27/modern-usb-gadget-on-linux-and-how-to-integrate-it-with-systemd-part-2/
+* https://www.collabora.com/news-and-blog/blog/2019/06/24/using-dummy-hcd/
+* https://stackoverflow.com/questions/39375475/raspberry-pi-zero-usb-device-emulation
+* https://www.kernel.org/doc/Documentation/usb/gadget_configfs.txt
+* https://www.kernel.org/doc/Documentation/usb/functionfs.txt
+* https://www.kernel.org/doc/html/latest/usb/functionfs.html
+* https://www.kernel.org/doc/html/latest/driver-api/usb/gadget.html
+* https://events.static.linuxfound.org/sites/events/files/slides/LinuxConNA-Make-your-own-USB-gadget-Andrzej.Pietrasiewicz.pdf
+* https://github.com/libusbgx/libusbgx
+* https://github.com/kopasiak/gt
