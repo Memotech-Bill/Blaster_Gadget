@@ -1,0 +1,435 @@
+diff -uNr linux.orig/drivers/usb/dwc2/gadget.c linux.new/drivers/usb/dwc2/gadget.c
+--- linux.orig/drivers/usb/dwc2/gadget.c	2020-05-27 10:01:50.055624300 +0100
++++ linux.new/drivers/usb/dwc2/gadget.c	2020-05-30 17:52:59.382688700 +0100
+@@ -3011,7 +3011,9 @@
+ static void dwc2_hsotg_irq_enumdone(struct dwc2_hsotg *hsotg)
+ {
+ 	u32 dsts = dwc2_readl(hsotg, DSTS);
+-	int ep0_mps = 0, ep_mps = 8;
++	int ep0_mps = hsotg->gadget.ep0->maxpacket;
++    int ep_mps = 8;
++    pr_crit ("enumdone: ep0_mps + %d\n", ep0_mps);
+ 
+ 	/*
+ 	 * This should signal the finish of the enumeration phase
+@@ -3032,19 +3034,21 @@
+ 	case DSTS_ENUMSPD_FS:
+ 	case DSTS_ENUMSPD_FS48:
+ 		hsotg->gadget.speed = USB_SPEED_FULL;
+-		ep0_mps = EP0_MPS_LIMIT;
++		if ((ep0_mps <= 0) || (ep0_mps > EP0_MPS_LIMIT)) ep0_mps = EP0_MPS_LIMIT;
+ 		ep_mps = 1023;
++        pr_crit("Enumerated: full speed: ep0_mps = %d\n", ep0_mps);
+ 		break;
+ 
+ 	case DSTS_ENUMSPD_HS:
+ 		hsotg->gadget.speed = USB_SPEED_HIGH;
+-		ep0_mps = EP0_MPS_LIMIT;
++		if ((ep0_mps <= 0) || (ep0_mps > EP0_MPS_LIMIT)) ep0_mps = EP0_MPS_LIMIT;
+ 		ep_mps = 1024;
++        pr_crit("Enumerated: high speed: ep0_mps = %d\n", ep0_mps);
+ 		break;
+ 
+ 	case DSTS_ENUMSPD_LS:
+ 		hsotg->gadget.speed = USB_SPEED_LOW;
+-		ep0_mps = 8;
++		if ((ep0_mps <= 0) || (ep0_mps > 8)) ep0_mps = 8;
+ 		ep_mps = 8;
+ 		/*
+ 		 * note, we don't actually support LS in this driver at the
+@@ -3183,6 +3187,30 @@
+ 			GINTSTS_PTXFEMP |  \
+ 			GINTSTS_RXFLVL)
+ 
++static void dwc2_hsotg_set_speed(struct usb_gadget *gadget,
++				  enum usb_device_speed speed)
++{
++	struct dwc2_hsotg *hsotg = to_hsotg(gadget);
++	switch (speed)
++    {
++    case USB_SPEED_LOW:
++        pr_crit ("dwc2_hsotg_set_speed = low\n");
++        hsotg->params.speed = DWC2_SPEED_PARAM_LOW;
++        break;
++    case USB_SPEED_FULL:
++        pr_crit ("dwc2_hsotg_set_speed = full\n");
++        hsotg->params.speed = DWC2_SPEED_PARAM_FULL;
++        break;
++    case USB_SPEED_HIGH:
++        pr_crit ("dwc2_hsotg_set_speed = high\n");
++        hsotg->params.speed = DWC2_SPEED_PARAM_HIGH;
++        break;
++    default:
++        // No way of returning an error
++        break;
++    }
++}
++
+ static int dwc2_hsotg_ep_disable(struct usb_ep *ep);
+ /**
+  * dwc2_hsotg_core_init - issue softreset to the core
+@@ -3251,12 +3279,14 @@
+ 		dcfg |= DCFG_DEVSPD_LS;
+ 		break;
+ 	case DWC2_SPEED_PARAM_FULL:
++        pr_crit("init_disconnected: full speed\n");
+ 		if (hsotg->params.phy_type == DWC2_PHY_TYPE_PARAM_FS)
+ 			dcfg |= DCFG_DEVSPD_FS48;
+ 		else
+ 			dcfg |= DCFG_DEVSPD_FS;
+ 		break;
+ 	default:
++        pr_crit("init_disconnected: high speed\n");
+ 		dcfg |= DCFG_DEVSPD_HS;
+ 	}
+ 
+@@ -4484,6 +4514,7 @@
+ 	.pullup                 = dwc2_hsotg_pullup,
+ 	.vbus_session		= dwc2_hsotg_vbus_session,
+ 	.vbus_draw		= dwc2_hsotg_vbus_draw,
++	.udc_set_speed		= dwc2_hsotg_set_speed,
+ };
+ 
+ /**
+diff -uNr linux.orig/drivers/usb/gadget/composite.c linux.new/drivers/usb/gadget/composite.c
+--- linux.orig/drivers/usb/gadget/composite.c	2020-05-27 10:01:50.167236300 +0100
++++ linux.new/drivers/usb/gadget/composite.c	2020-05-30 17:52:59.831210300 +0100
+@@ -510,25 +510,38 @@
+ 		speed = gadget->speed;
+ 	else if (gadget_is_dualspeed(gadget)) {
+ 		int	hs = 0;
++        pr_crit ("gadget is dual speed\n");
+ 		if (gadget->speed == USB_SPEED_HIGH)
++            {
+ 			hs = 1;
++            pr_crit ("gadget->speed = high\n");
++            }
+ 		if (type == USB_DT_OTHER_SPEED_CONFIG)
++            {
+ 			hs = !hs;
++            pr_crit ("Other speed configuration\n");
++            }
+ 		if (hs)
++            {
+ 			speed = USB_SPEED_HIGH;
++            pr_crit ("set high speed\n");
++            }
+ 
+ 	}
+ 
+ 	/* This is a lookup by config *INDEX* */
+ 	w_value &= 0xff;
++    pr_crit ("type = %d, w_value = %d, speed = %d\n", type, w_value, speed);
+ 
+ 	pos = &cdev->configs;
+ 	c = cdev->os_desc_config;
++    pr_crit ("os_desc_config = %p\n", c);
+ 	if (c)
+ 		goto check_config;
+ 
+ 	while ((pos = pos->next) !=  &cdev->configs) {
+ 		c = list_entry(pos, typeof(*c), list);
++        pr_crit ("c = %p\n", c);
+ 
+ 		/* skip OS Descriptors config which is handled separately */
+ 		if (c == cdev->os_desc_config)
+@@ -554,10 +567,12 @@
+ 				continue;
+ 		}
+ 
++        pr_crit ("w_value = %d\n", w_value);
+ 		if (w_value == 0)
+ 			return config_buf(c, speed, cdev->req->buf, type);
+ 		w_value--;
+ 	}
++    pr_crit ("Failed to find config\n");
+ 	return -EINVAL;
+ }
+ 
+@@ -1606,28 +1621,36 @@
+ 		switch (w_value >> 8) {
+ 
+ 		case USB_DT_DEVICE:
++            pr_crit ("composite_setup: USB_DT_DEVICE\n");
+ 			cdev->desc.bNumConfigurations =
+ 				count_configs(cdev, USB_DT_DEVICE);
+-			cdev->desc.bMaxPacketSize0 =
+-				cdev->gadget->ep0->maxpacket;
++            pr_crit("Previous bMaxPacketSize0 = %d\n", cdev->desc.bMaxPacketSize0);
++            // if ((cdev->desc.bMaxPacketSize0 == 0)
++            //     || (cdev->desc.bMaxPacketSize0 > cdev->gadget->ep0->maxpacket))
++            cdev->desc.bMaxPacketSize0 =
++                cdev->gadget->ep0->maxpacket;
++            pr_crit("New bMaxPacketSize0 = %d\n", cdev->desc.bMaxPacketSize0);
++            /* M.Bill - Retain bcdUSB from ConfigFS if possible */
+ 			if (gadget_is_superspeed(gadget)) {
+ 				if (gadget->speed >= USB_SPEED_SUPER) {
+-					cdev->desc.bcdUSB = cpu_to_le16(0x0320);
++					if ( le16_to_cpu(cdev->desc.bcdUSB) < 0x320 ) cdev->desc.bcdUSB = cpu_to_le16(0x0320);
+ 					cdev->desc.bMaxPacketSize0 = 9;
+ 				} else {
+-					cdev->desc.bcdUSB = cpu_to_le16(0x0210);
++					if ( le16_to_cpu(cdev->desc.bcdUSB) < 0x210 ) cdev->desc.bcdUSB = cpu_to_le16(0x0210);
+ 				}
+ 			} else {
+-				if (gadget->lpm_capable)
+-					cdev->desc.bcdUSB = cpu_to_le16(0x0201);
+-				else
+-					cdev->desc.bcdUSB = cpu_to_le16(0x0200);
++				if (gadget->lpm_capable) {
++					if ( le16_to_cpu(cdev->desc.bcdUSB) < 0x201 ) cdev->desc.bcdUSB = cpu_to_le16(0x0201);
++                } else {
++					if ( le16_to_cpu(cdev->desc.bcdUSB) < 0x100 ) cdev->desc.bcdUSB = cpu_to_le16(0x0200);
++                }
+ 			}
+ 
+ 			value = min(w_length, (u16) sizeof cdev->desc);
+ 			memcpy(req->buf, &cdev->desc, value);
+ 			break;
+ 		case USB_DT_DEVICE_QUALIFIER:
++            pr_crit ("composite_setup: USB_DT_DEVICE_QUALIFIER\n");
+ 			if (!gadget_is_dualspeed(gadget) ||
+ 			    gadget->speed >= USB_SPEED_SUPER)
+ 				break;
+@@ -1636,22 +1659,26 @@
+ 				sizeof(struct usb_qualifier_descriptor));
+ 			break;
+ 		case USB_DT_OTHER_SPEED_CONFIG:
++            pr_crit ("composite_setup: USB_DT_OTHER_SPEED_CONFIG\n");
+ 			if (!gadget_is_dualspeed(gadget) ||
+ 			    gadget->speed >= USB_SPEED_SUPER)
+ 				break;
+ 			/* FALLTHROUGH */
+ 		case USB_DT_CONFIG:
++            pr_crit ("composite_setup: USB_DT_CONFIG speed = %d\n", gadget->speed);
+ 			value = config_desc(cdev, w_value);
+ 			if (value >= 0)
+ 				value = min(w_length, (u16) value);
+ 			break;
+ 		case USB_DT_STRING:
++            pr_crit ("composite_setup: USB_DT_STRING\n");
+ 			value = get_string(cdev, req->buf,
+ 					w_index, w_value & 0xff);
+ 			if (value >= 0)
+ 				value = min(w_length, (u16) value);
+ 			break;
+ 		case USB_DT_BOS:
++            pr_crit ("composite_setup: USB_DT_BOS\n");
+ 			if (gadget_is_superspeed(gadget) ||
+ 			    gadget->lpm_capable) {
+ 				value = bos_desc(cdev);
+@@ -1659,6 +1686,7 @@
+ 			}
+ 			break;
+ 		case USB_DT_OTG:
++            pr_crit ("composite_setup: USB_DT_OTG\n");
+ 			if (gadget_is_otg(gadget)) {
+ 				struct usb_configuration *config;
+ 				int otg_desc_len = 0;
+@@ -1689,6 +1717,7 @@
+ 
+ 	/* any number of configs can work */
+ 	case USB_REQ_SET_CONFIGURATION:
++        pr_crit ("composite_setup: USB_REQ_SET_CONFIGURATION\n");
+ 		if (ctrl->bRequestType != 0)
+ 			goto unknown;
+ 		if (gadget_is_otg(gadget)) {
+@@ -1704,6 +1733,7 @@
+ 		spin_unlock(&cdev->lock);
+ 		break;
+ 	case USB_REQ_GET_CONFIGURATION:
++        pr_crit ("composite_setup: USB_REQ_GET_CONFIGURATION\n");
+ 		if (ctrl->bRequestType != USB_DIR_IN)
+ 			goto unknown;
+ 		if (cdev->config)
+@@ -1715,6 +1745,7 @@
+ 
+ 	/* function drivers must handle get/set altsetting */
+ 	case USB_REQ_SET_INTERFACE:
++        pr_crit ("composite_setup: USB_REQ_SET_INTERFACE\n");
+ 		if (ctrl->bRequestType != USB_RECIP_INTERFACE)
+ 			goto unknown;
+ 		if (!cdev->config || intf >= MAX_CONFIG_INTERFACES)
+@@ -1744,6 +1775,7 @@
+ 		spin_unlock(&cdev->lock);
+ 		break;
+ 	case USB_REQ_GET_INTERFACE:
++        pr_crit ("composite_setup: USB_REQ_GET_INTERFACE\n");
+ 		if (ctrl->bRequestType != (USB_DIR_IN|USB_RECIP_INTERFACE))
+ 			goto unknown;
+ 		if (!cdev->config || intf >= MAX_CONFIG_INTERFACES)
+@@ -1759,6 +1791,7 @@
+ 		value = min(w_length, (u16) 1);
+ 		break;
+ 	case USB_REQ_GET_STATUS:
++        pr_crit ("composite_setup: USB_REQ_GET_STATUS\n");
+ 		if (gadget_is_otg(gadget) && gadget->hnp_polling_support &&
+ 						(w_index == OTG_STS_SELECTOR)) {
+ 			if (ctrl->bRequestType != (USB_DIR_IN |
+@@ -1799,6 +1832,7 @@
+ 	 */
+ 	case USB_REQ_CLEAR_FEATURE:
+ 	case USB_REQ_SET_FEATURE:
++        pr_crit ("composite_setup: USB_REQ_SET_FEATURE\n");
+ 		if (!gadget_is_superspeed(gadget))
+ 			goto unknown;
+ 		if (ctrl->bRequestType != (USB_DIR_OUT | USB_RECIP_INTERFACE))
+@@ -1845,6 +1879,7 @@
+ 			buf[5] = 0x01;
+ 			switch (ctrl->bRequestType & USB_RECIP_MASK) {
+ 			case USB_RECIP_DEVICE:
++                pr_crit ("composite_setup: USB_RECIP_DEVICE\n");
+ 				if (w_index != 0x4 || (w_value >> 8))
+ 					break;
+ 				buf[6] = w_index;
+@@ -1910,12 +1945,14 @@
+ 
+ 		switch (ctrl->bRequestType & USB_RECIP_MASK) {
+ 		case USB_RECIP_INTERFACE:
++            pr_crit ("composite_setup: USB_RECIP_INTERFACE\n");
+ 			if (!cdev->config || intf >= MAX_CONFIG_INTERFACES)
+ 				break;
+ 			f = cdev->config->interface[intf];
+ 			break;
+ 
+ 		case USB_RECIP_ENDPOINT:
++            pr_crit ("composite_setup: USB_RECIP_ENDPOINT\n");
+ 			if (!cdev->config)
+ 				break;
+ 			endp = ((w_index & 0x80) >> 3) | (w_index & 0x0f);
+@@ -1958,10 +1995,17 @@
+ check_value:
+ 	/* respond with data transfer before status phase? */
+ 	if (value >= 0 && value != USB_GADGET_DELAYED_STATUS) {
++        pr_crit ("length = %d, w_length = %d:", value, w_length);
++        if (req->buf != NULL )
++            {
++            int i;
++            for (i = 0; i < value; ++i) pr_cont (" %02X", ((char *)req->buf)[i]);
++            }
+ 		req->length = value;
+ 		req->context = cdev;
+ 		req->zero = value < w_length;
+ 		value = composite_ep0_queue(cdev, req, GFP_ATOMIC);
++        pr_cont (": %d\n", value);
+ 		if (value < 0) {
+ 			DBG(cdev, "ep_queue --> %d\n", value);
+ 			req->status = 0;
+diff -uNr linux.orig/drivers/usb/gadget/configfs.c linux.new/drivers/usb/gadget/configfs.c
+--- linux.orig/drivers/usb/gadget/configfs.c	2020-05-27 10:01:50.173211000 +0100
++++ linux.new/drivers/usb/gadget/configfs.c	2020-05-30 17:52:59.844924300 +0100
+@@ -154,6 +154,7 @@
+ 	ret = kstrtou8(page, 0, &val);			\
+ 	if (ret)					\
+ 		return ret;				\
++    pr_crit ("write _name = %04X\n", val); \
+ 	to_gadget_info(item)->cdev.desc._name = val;	\
+ 	return len;					\
+ }
+@@ -278,6 +279,10 @@
+ 			ret = -EBUSY;
+ 			goto err;
+ 		}
++        if ( le16_to_cpu(gi->cdev.desc.bcdUSB) < 0x200 )
++            gi->composite.gadget_driver.max_speed = USB_SPEED_FULL;
++        pr_crit("Set UDC: bcdUSB = %04X, max_speed = %d\n", le16_to_cpu(gi->cdev.desc.bcdUSB),
++            gi->composite.gadget_driver.max_speed);
+ 		gi->composite.gadget_driver.udc_name = name;
+ 		ret = usb_gadget_probe_driver(&gi->composite.gadget_driver);
+ 		if (ret) {
+@@ -1365,6 +1370,10 @@
+ 			goto err_purge_funcs;
+ 	}
+ 
++    /* M.Bill set ep0 maximum packet size */
++    gadget->ep0->maxpacket = cdev->desc.bMaxPacketSize0;
++    pr_crit ("configfs_composite_bind: Set ep0->maxpacket = %d\n", gadget->ep0->maxpacket);
++
+ 	usb_ep_autoconfig_reset(cdev->gadget);
+ 	return 0;
+ 
+diff -uNr linux.orig/drivers/usb/gadget/epautoconf.c linux.new/drivers/usb/gadget/epautoconf.c
+--- linux.orig/drivers/usb/gadget/epautoconf.c	2020-05-27 10:01:50.176007000 +0100
++++ linux.new/drivers/usb/gadget/epautoconf.c	2020-05-30 17:52:59.851014000 +0100
+@@ -98,7 +98,23 @@
+ 	desc->bEndpointAddress &= USB_DIR_IN;
+ 	if (isdigit(ep->name[2])) {
+ 		u8 num = simple_strtoul(&ep->name[2], NULL, 10);
++        pr_crit ("EndpointAddress = %02X, Named endpoint = %s\n", desc->bEndpointAddress, ep->name);
+ 		desc->bEndpointAddress |= num;
++	} else if (desc->bEndpointAddress & FFS_FORCE_ADDR) {
++        /* M.Bill - If possible use the endpoint addresses requested in the configuration */
++        if (desc->bEndpointAddress & USB_DIR_IN) {
++            if (gadget->in_epnum >= (desc->bEndpointAddress & USB_ENDPOINT_NUMBER_MASK))
++                return NULL;
++            gadget->in_epnum = desc->bEndpointAddress & USB_ENDPOINT_NUMBER_MASK;
++            desc->bEndpointAddress = USB_DIR_IN | gadget->in_epnum;
++        } else {
++            if (gadget->out_epnum >= (desc->bEndpointAddress & USB_ENDPOINT_NUMBER_MASK))
++                return NULL;
++            gadget->out_epnum = desc->bEndpointAddress & USB_ENDPOINT_NUMBER_MASK;
++            desc->bEndpointAddress = gadget->out_epnum;
++        }
++        pr_crit ("EndpointAddress = %02X, Force, in_epnum = %d, out_epnum = %d\n",
++            desc->bEndpointAddress, gadget->in_epnum, gadget->out_epnum);
+ 	} else if (desc->bEndpointAddress & USB_DIR_IN) {
+ 		if (++gadget->in_epnum > 15)
+ 			return NULL;
+@@ -123,6 +139,7 @@
+ 	ep->desc = NULL;
+ 	ep->comp_desc = NULL;
+ 	ep->claimed = true;
++    pr_crit ("Set ep->address = %d\n", ep->address);
+ 	return ep;
+ }
+ EXPORT_SYMBOL_GPL(usb_ep_autoconfig_ss);
+diff -uNr linux.orig/drivers/usb/gadget/udc/core.c linux.new/drivers/usb/gadget/udc/core.c
+--- linux.orig/drivers/usb/gadget/udc/core.c	2020-05-27 10:01:50.483459100 +0100
++++ linux.new/drivers/usb/gadget/udc/core.c	2020-05-30 17:53:02.667660800 +0100
+@@ -14,6 +14,7 @@
+ #include <linux/dma-mapping.h>
+ #include <linux/sched/task_stack.h>
+ #include <linux/workqueue.h>
++#include <linux/ctype.h>
+ 
+ #include <linux/usb/ch9.h>
+ #include <linux/usb/gadget.h>
+@@ -989,6 +990,12 @@
+ 		break;
+ 	}
+ 
++    if ((desc->bEndpointAddress & FFS_FORCE_ADDR) && (isdigit(ep->name[2]))) {
++        u8 num = simple_strtoul(&ep->name[2], NULL, 10);
++        if ( num != (desc->bEndpointAddress & USB_ENDPOINT_NUMBER_MASK))
++            return 0;
++    }
++
+ 	return 1;
+ }
+ EXPORT_SYMBOL_GPL(usb_gadget_ep_match_desc);
+@@ -1107,10 +1114,12 @@
+ static inline void usb_gadget_udc_set_speed(struct usb_udc *udc,
+ 					    enum usb_device_speed speed)
+ {
++    pr_crit("udc_set_speed = %p\n", udc->gadget->ops->udc_set_speed);
+ 	if (udc->gadget->ops->udc_set_speed) {
+ 		enum usb_device_speed s;
+ 
+ 		s = min(speed, udc->gadget->max_speed);
++        pr_crit ("speed = %d, max_speed = %d, s = %d\n", speed, udc->gadget->max_speed, s);
+ 		udc->gadget->ops->udc_set_speed(udc->gadget, s);
+ 	}
+ }
+diff -uNr linux.orig/.git/config linux.new/.git/config
+--- linux.orig/include/uapi/linux/usb/ch9.h	2020-05-27 10:02:14.922633300 +0100
++++ linux.new/include/uapi/linux/usb/ch9.h	2020-05-30 17:54:20.525330600 +0100
+@@ -50,6 +50,8 @@
+ #define USB_DIR_OUT			0		/* to device */
+ #define USB_DIR_IN			0x80		/* to host */
+ 
++#define FFS_FORCE_ADDR  0x40    /* M.Bill - Force explicit endpoint address */
++
+ /*
+  * USB types, the second of three bRequestType fields
+  */
+diff -uNr linux.orig/maxpacket linux.new/maxpacket

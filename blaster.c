@@ -41,6 +41,8 @@
 #include <errno.h>
 #include <linux/usb/functionfs.h>
 
+#define FFS_FORCE_ADDR	0x40
+
 typedef enum {false, true} bool;
 
 static char sRoot[PATH_LEN] = "/sys/kernel/config/usb_gadget/";
@@ -220,11 +222,11 @@ void DescInterface (unsigned char **pptr, int num, int settings, int endpoints, 
  * } __attribute__((packed));
  */
 
-void DescEndpoint (unsigned char **pptr, int addr, bool bSend, int attr, int max_size, int interval)
+void DescEndpoint (unsigned char **pptr, int addr, int attr, int max_size, int interval)
     {
     DescInt (pptr, sizeof (struct usb_endpoint_descriptor_no_audio), 1);
     DescInt (pptr, USB_DT_ENDPOINT, 1);
-    DescInt (pptr, addr | (bSend ? USB_DIR_IN /* to host */: USB_DIR_OUT /* to device */) , 1);
+    DescInt (pptr, addr, 1);
     DescInt (pptr, attr, 1);
     DescInt (pptr, max_size, 2);
     DescInt (pptr, interval, 1);
@@ -248,11 +250,12 @@ void WriteDesc (int ep0)
         diag_message (DIAG_FATAL, "Unable to allocate memory for endpoint definitions\n");
     unsigned char *ptr = ptrDesc;
     DescHead (&ptr, 0, 3, 0, 0, 0);
+//    DescHead (&ptr, 0, 0, 3, 0, 0);
     DescInterface (&ptr, 0, 0, 2, 255, 255, 255, 0);
-    DescEndpoint (&ptr, 1, true,
+    DescEndpoint (&ptr, 1 | USB_DIR_IN | FFS_FORCE_ADDR,    // Direction in to host (from gadget)
         USB_ENDPOINT_XFER_BULK | USB_ENDPOINT_SYNC_NONE | USB_ENDPOINT_USAGE_DATA,
         64, 1);
-    DescEndpoint (&ptr, 2, false,
+    DescEndpoint (&ptr, 2 | USB_DIR_OUT | FFS_FORCE_ADDR,   // Direction out from host (in to gadget)
         USB_ENDPOINT_XFER_BULK | USB_ENDPOINT_SYNC_NONE | USB_ENDPOINT_USAGE_DATA,
         64, 1);
     DescLength (ptrDesc, ptr);
@@ -361,7 +364,9 @@ void GadgetConfig (void)
     WriteConfig ("idVendor", "0x09fb");
     WriteConfig ("idProduct", "0x6001");
     WriteConfig ("bcdUSB", "0x0110");
+//    WriteConfig ("bcdUSB", "0x0200");
     WriteConfig ("bcdDevice", "0x0400");
+    WriteConfig ("bMaxPacketSize0", "0x40");
     MakeDirs ("strings/0x409");
     WriteConfig ("strings/0x409/manufacturer", "Altera");
     WriteConfig ("strings/0x409/product", "USB-Blaster");
@@ -430,6 +435,8 @@ void Blast (void)
     int nSeq = 0;
     int nIn = 0;
     int nOut = 2;
+    int nTryRead = 0;
+    int nTryWrite = 0;
     bool bRun = false;
     bool bRead;
     uOut[0] = 0x31;
@@ -465,16 +472,19 @@ void Blast (void)
                 }
             switch (event.type)
                 {
-                case FUNCTIONFS_SETUP:
                 case FUNCTIONFS_RESUME:
-                    bRun = true;
-                    break;
-                case FUNCTIONFS_BIND:
-                case FUNCTIONFS_UNBIND:
                 case FUNCTIONFS_ENABLE:
+                    bRun = true;
+                    nTryRead = 0;
+                    nTryWrite = 0;
+                    break;
+                case FUNCTIONFS_UNBIND:
                 case FUNCTIONFS_DISABLE:
                 case FUNCTIONFS_SUSPEND:
                     bRun = false;
+                    break;
+                case FUNCTIONFS_SETUP:
+                case FUNCTIONFS_BIND:
                     break;
                 }
             }
@@ -483,6 +493,7 @@ void Blast (void)
         long te = 1000000000UL * (tsNow.tv_sec - tsLast.tv_sec) + tsNow.tv_nsec - tsLast.tv_nsec;
         if ( ( nOut > 2 ) || ( te > 1000000UL ) )
             {
+            if ( ++nTryWrite == 1 ) diag_message (DIAG_USB, "First try writing ep1\n");
             int nWrite = write (ep1, uOut, sizeof (uOut));
             diag_message (DIAG_JTAG, "Write %d:", nWrite);
             for (int i = 0; i < nWrite; ++i) diag_message (DIAG_JTAG, " %02X", uOut[i]);
@@ -496,6 +507,7 @@ void Blast (void)
             tsLast.tv_nsec = tsNow.tv_nsec;
             }
         if ( nOut > 2 ) continue;
+        if ( ++nTryRead == 1 ) diag_message (DIAG_USB, "First try reading ep2\n");
         nIn = read (ep2, uIn, sizeof (uIn));
         if ( nIn > 0 )
             {
